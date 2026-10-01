@@ -1,0 +1,45 @@
+%%{init: {"flowchart": {"wrappingWidth": 420, "nodeSpacing": 40, "rankSpacing": 60}, "theme": "base", "themeVariables": {"fontSize": "16px", "primaryColor": "#E8F1FB", "primaryBorderColor": "#2B6CB0", "lineColor": "#4A5568"}}}%%
+flowchart TB
+  user(["Business user<br/>types a plain-English chart request"])
+  affiliate(["Affiliate partner site<br/>signed SSO token"])
+  partner(["AI agent / partner system<br/>MCP client"])
+
+  subgraph CP["Control plane"]
+    direction LR
+    UX["PointAura UX<br/>Plotly Dash + Bootstrap<br/>Flask session, background chart workers"]
+    REG[("Entity registry<br/>orgs, memberships, roles")]
+    UX --- REG
+  end
+
+  subgraph SPOKE["Org spoke (one isolated deployment per organization)"]
+    API["REST API v1<br/>Flask app factory, JWT auth,<br/>ownership checks, credential redaction"]
+    MCP["MCP server<br/>JSON-RPC 2.0 at /mcp"]
+    TS[("TokenSaver cache<br/>committed SQL + Plotly code")]
+    subgraph PIPE["AI chart pipeline"]
+      direction LR
+      SQL["1. NL to SQL<br/>schema-aware prompt,<br/>dialect repair"] --> CODE["2. Data sample to<br/>Plotly code"] --> EXEC["3. Guarded exec<br/>with timeout,<br/>theme + legibility fixes"]
+    end
+    INS["Insight panes<br/>SQL profiling to narrative"]
+    META[("App metadata DB<br/>users, pages, panes, sources")]
+    WH[("Warehouse DB<br/>CSV and URL imports")]
+  end
+
+  GROK{{"xAI Grok via LangChain<br/>reasoning model for SQL and insights,<br/>code model for Plotly"}}
+  EXT[("Customer data sources<br/>PostgreSQL, MySQL, SQL Server,<br/>Azure SQL, Snowflake")]
+
+  user --> UX
+  affiliate -->|"POST /sso/affiliate"| UX
+  UX -->|"HTTPS + delegated JWT<br/>for the selected org"| API
+  partner -->|"register source,<br/>propose / apply page"| MCP
+  MCP --> API
+  API --> META
+  API -->|"cache hit: no LLM call"| TS
+  TS --> EXEC
+  API -->|"cache miss"| SQL
+  API --> INS
+  PIPE <--> GROK
+  INS <--> GROK
+  MCP <--> GROK
+  SQL --> EXT
+  SQL --> WH
+  EXEC -.->|"Plotly figure JSON"| UX
